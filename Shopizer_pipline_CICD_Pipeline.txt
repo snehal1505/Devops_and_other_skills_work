@@ -1,0 +1,114 @@
+pipeline{
+    agent any 
+   environment {
+        JMETER_HOME = "/home/TGAutomation/jmeter/apache-jmeter-5.5"
+         SFDX_HOME = "/home/TGAutomation/sfdx"
+    	SERVERKEY = "/home/TGAutomation/openssl_for_sf/from_VMJenkins/server.key"
+    	ORGURL = 'https://login.salesforce.com'
+       JAVA_HOME = "/usr/lib/jvm/java-11-openjdk-amd64"
+     }
+        
+        
+        
+   }
+    stages{
+        stage('checkout-SCM'){
+            steps{
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-credential', url: 'https://github.com/TRU-Global/shopizer-shop-reactjs.git']]])
+            }
+        }
+         stage('SonarQube analysis') {
+             
+//    def scannerHome = tool 'SonarScanner 4.0';
+        steps{
+            //nodejs(nodeJSInstallationName:'Node-16'){
+            //sh '''npm install'''
+                 withSonarQubeEnv('sonar') {
+      
+                sh '''npm i sonar-scanner'''
+                sh '''npm run sonar'''
+                 }
+         
+        }
+    }
+       
+        stage('Build'){
+            steps{
+              sh '''npm i'''
+           }
+      }
+        
+       stage('Test-Data-API'){
+           steps{
+               sh '''newman run /home/TGAutomation/'Shopizer  Orchestration Process.postman_collection' '''
+         }
+      }
+      
+      
+      stage('SFDC_Automation_set_up') {
+            steps {
+                dir("SFDX_Pipeline_sfdc_automation"){
+                sh '''pwd'''
+                sh '''ls -ltr'''
+                }
+                
+                dir("workspace"){
+                sh '''pwd'''
+                sh '''ls -ltr'''
+                }
+                sh '''pwd'''
+                sh '''echo ${JAVA_HOME} '''
+                sh '''if [ -e "TRUGlobalAutomation" ] 
+                      then
+                             rm -rf TRUGlobalAutomation
+                      else 
+                     echo "skip" 
+                     fi'''
+               
+                sh ''' git clone -b Azure_Pipeline https://<username>:<github_privete_token>@github.com/TRU-Global/TRUGlobalAutomation.git '''
+                sh '''ls -ltr'''
+		
+            }
+        }
+        
+        stage('SFDC_Automation_execution'){
+            steps { 
+            sh '''pwd'''
+            sh '''echo "${JAVA_HOME}" '''
+            sh '''cd `pwd`/TRUGlobalAutomation/TRUGlobalAutomation'''
+            sh '''ls -ltr'''
+            sh '''mvn -f TRUGlobalAutomation/TRUGlobalAutomation/pom.xml clean install'''
+			}
+        }
+      }
+         post {
+        always {
+            /*cleanWs(cleanWhenNotBuilt: false,
+                    deleteDirs: false,
+                    disableDeferredWipeout: true,
+                    notFailBuild: false,
+                    patterns: [[pattern: 'log', type: 'INCLUDE']])*/
+                echo "Archiving.."
+                archiveArtifacts(artifacts: '**/*.txt', followSymlinks: false)
+				archiveArtifacts(artifacts: '**/TRUGlobalAutomation/TRUGlobalAutomation/target/*.jar', followSymlinks: false)
+				archiveArtifacts(artifacts: '**/TRUGlobalAutomation/TRUGlobalAutomation/target/surefire-reports/*.html',followSymlinks: false) 
+                //archiveArtifacts(artifacts: '**/retrieveUnpackaged/objects/*.object', followSymlinks: false)
+        }
+    }
+      
+        stage('Performance-Testing'){
+            steps{
+               // sh '''/home/TGAutomation/jmeter/apache-jmeter-5.5/bin ./jmeter.sh -n -t examples/CSVSample.jmx'''
+                
+               sh '''${JMETER_HOME}/bin/jmeter.sh -n -t ${JMETER_HOME}/bin/examples/CSVSample.jmx'''
+            }
+        }
+        
+        
+      stage('Deploy'){
+          steps{
+              sh '''npm start'''
+          }
+       }
+    }
+}

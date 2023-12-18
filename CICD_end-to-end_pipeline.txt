@@ -1,0 +1,359 @@
+	pipeline {
+		agent any 
+	 
+	   environment {
+			 // MAVEN_HOME = "/opt/apache-maven-3.6.3"
+			 //SFDX_HOME = "/home/TGAutomation/sfdx"
+		//	SERVERKEY = "/home/TGAutomation/openssl_for_sf/from_VMJenkins/server.key"
+		//	ORGURL = 'https://login.salesforce.com'
+			JAVA_HOME = "/usr/lib/jvm/java-11-openjdk-amd64"
+			Branch = "develop"
+			WORKSPACE_HOME = "/var/lib/jenkins/workspace"
+			JMETER_HOME = "/home/TGAutomation/jmeter/apache-jmeter-5.5"
+			GEN_ROCKET_HOME = "/home/TGAutomation/genrocket"
+		   // PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/TGAutomation/genrocket//bin"
+		
+		  
+		 }
+			
+		stages {
+			stage('checkout-SCM'){
+			steps {
+					 sh '''ls -ltr'''
+					 sh '''echo ${JAVA_HOME} '''
+					 sh '''if [ -e "TRUGLOBAL" ] 
+											then
+											  rm -rf TRUGLOBAL
+										   else 
+											   echo "skip" 
+							fi '''
+					 sh '''mkdir TRUGLOBAL'''
+						 dir('TRUGLOBAL'){
+						 
+									 sh '''if [ -e "TRUGlobalAutomation" ] 
+											then
+											  rm -rf TRUGlobalAutomation
+										   else 
+											   echo "skip" 
+											fi'''
+								  checkout([$class: 'GitSCM', branches: [[name: '*/Jenkins']], 
+								  extensions: [], userRemoteConfigs: [[credentialsId: 'github-credential', 
+								  url: 'https://github.com/TRU-Global/Shopizer.git']]])
+								  
+								sh '''ls -ltr'''
+								dir('TRUGlobalAutomation'){
+										sh '''pwd'''
+										sh '''ls -ltr'''
+										}
+						 }
+						 
+						 sh '''if [ -e "SHOPIZER" ] 
+											then
+											  rm -rf SHOPIZER
+										   else 
+											   echo "skip" 
+							fi '''       
+				   
+						 sh '''mkdir SHOPIZER'''	
+						 sh '''ls -ltr'''
+						   dir('SHOPIZER'){
+										checkout([$class: 'GitSCM', branches: [[name: '*/main']], 
+										extensions: [], userRemoteConfigs: [[credentialsId: 'github-credential',
+										url: 'https://github.com/TRU-Global/shopizer-shop-reactjs.git']]])
+										
+										sh '''pwd'''
+										sh '''ls -ltr'''
+					
+									  }
+									  
+									  
+							sh '''if [ -e "Code-Coverage" ] 
+											then
+											  rm -rf Code-Coverage
+										   else 
+											   echo "skip" 
+							fi '''		  
+						 sh '''mkdir Code-Coverage'''
+						 sh ''' ls -ltr'''
+						 dir('Code-Coverage'){
+									  checkout([$class: 'GitSCM', branches: [[name: 'pank_jacoco_aggr']], 
+									  extensions: [], userRemoteConfigs: [[credentialsId: 'snehal-github-access', 
+									  url: 'https://github.com/<usernem>/shopizer.git']]])
+										 
+										 sh '''pwd'''
+										 sh '''ls -ltr'''
+										 }
+										 
+									 
+						sh ''' if [ -e "Backend-code-base" ]
+							 then
+								 rm -rf Backend-code-base
+						   else
+								echo "skip"
+							fi    
+						'''
+						sh '''mkdir Backend-code-base'''
+						dir('Backend-code-base'){
+									checkout([$class: 'GitSCM',
+									branches: [[name: '*/backend_codeCoverage']], 
+									extensions: [], userRemoteConfigs: [[credentialsId: 'snehal-github-access', 
+									url: 'https://github.com/<userneme>/shopizer.git']]])
+									}
+									
+						sh ''' if [ -e "jar-file" ]
+							 then
+								 rm -rf jar-file
+						   else
+								echo "skip"
+							fi    
+						'''
+						
+						sh '''mkdir jar-file'''
+						dir('jar-file'){
+						checkout([$class: 'GitSCM', branches: [[name: '*/master']],
+						extensions: [], userRemoteConfigs: [[credentialsId: 'snehal2-github-access', 
+						url: 'https://github.com/<username>/jacoco_jar_file.git']]])
+						}
+									 
+											} 
+									  
+									  
+									  }
+							
+			 
+			
+	   stage('SonarQube analysis') {
+			   
+		 steps{
+		 
+		 dir('SHOPIZER'){
+		   echo "code-analysis started"
+		   sh '''ls -ltr'''
+		   sh '''pwd'''
+				 
+			withSonarQubeEnv('sonar') {
+		  
+			 sh '''npm i sonar-scanner'''
+			 sh '''npm run sonar'''
+				  }
+				  }
+			 
+		  }
+		}
+		
+		
+	   stage('Unit-Test-Cases-execution'){
+			 steps{
+			 dir('Code-Coverage'){
+			 sh '''ls -ltr'''
+			 sh '''pwd'''
+			 sh '''mvn clean verify'''
+			 }
+			 }
+		}
+			 
+		
+		 stage('code-Coverage'){
+		   steps {
+			 dir('Code-Coverage'){
+				jacoco()
+				}
+			}
+		 }
+		
+			
+			 
+			 
+	   stage('Frontend-Build'){
+				steps{
+					
+				   // sh '''Fuser -k 3000/tcp || true'''
+					dir('SHOPIZER'){
+					sh '''echo "building code....."'''
+					 sh '''echo "${JAVA_HOME}" '''
+					 
+					 sh '''pwd'''
+					 sh '''fuser -k 3000/tcp || true'''
+					 
+					 sh '''npm i'''
+					 }
+			   }
+		  }
+		  
+		  stage('Frontend-Deploy'){
+			  steps{
+				  timestamps {
+	  
+				  sh '''echo "Deploying....." '''
+				  sh '''pwd'''
+				  
+				 build job: 'Deploy', parameters: [string(name: 'param1', value: "value1")],wait:false
+				  }
+				 
+			  }
+		   }
+		  stage('Backend-Build'){
+				steps{
+				  dir('Backend-code-base'){
+		
+				 sh ''' mysql -h <IP_address> -P <port_number> --protocol=tcp -D SALESMANAGER -u <username> 
+				 --password="<password>"
+				 -e "DROP DATABASE SALESMANAGER;CREATE DATABASE SALESMANAGER;" '''
+				 sh ''' mvn package '''
+				 
+				  }
+				}
+				
+			}
+			
+		stage('Backend-application-Deploy-with-agent'){
+				steps{
+			sh '''pwd'''
+		   sh '''cp /var/lib/jenkins/workspace/duplicate-shopizer-pipeline/jar-file/org.jacoco.agent-0.8.8-runtime.jar /var/lib/jenkins/workspace/latest-shopizer-pipeline/Backend-code-base/sm-shop/target/'''
+		   sh '''cp /var/lib/jenkins/workspace/duplicate-shopizer-pipeline/jar-file/org.jacoco.cli-0.8.8-nodeps.jar /var/lib/jenkins/workspace/latest-shopizer-pipeline/Backend-code-base/sm-shop/target/'''
+		   dir('Backend-code-base/sm-shop/target/'){
+		   sh '''	'''
+
+					 }
+		   }
+		}
+		  
+		   
+		   stage('Load-Test-Data'){
+			   steps{
+			   sh '''pwd'''
+			   //sh '''genrocket -a'''
+			  // sh '''genrocketcl'''
+			   sh '''genrocket -r /var/lib/jenkins/input/SeasonForcastScenario.grs'''
+			   }
+		   }
+		   
+		   
+		   
+			stage('Test-Data-Genaration'){
+				steps{
+				   ' 
+					sh 'pwd'
+					sh 'ls -ltr'
+					sh '''genrocket -r /var/lib/jenkins/input/SeasonForcastScenario.grs'''
+				 
+			}
+			}
+	 
+		   
+		   
+		   stage('API-Test-Cases'){
+			  steps{
+				  catchError(buildResult: 'SUCCESS',stageResult: 'FAILURE') { 
+				  sh '''echo "test-API...."'''
+				   
+				  sh '''pwd'''
+				  sh '''ls -ltr'''
+				  sh '''sleep 200'''
+				  sh '''newman run /home/TGAutomation/collection_file/'Shopizer Orchestration Process.postman_collection.json' '''
+				  
+				  //sh '''fuser -k 8085/tcp || true'''
+				  }
+			}
+		  }
+		  
+		  
+		   stage('Shopizer_Automation_test_set_up') {
+				steps {
+				
+					timestamps {
+				   sh '''ls -ltr'''
+				
+					sh '''echo ${JAVA_HOME} '''
+					}
+					
+				  }
+			}
+			
+			
+			stage('Shopizer_Automation_test_execution'){
+				steps { 
+					timestamps {
+				   catchError(buildResult: 'SUCCESS',stageResult: 'FAILURE') {
+						//sh "exit 1"
+						  
+				sh '''pwd'''
+				sh '''echo "${JAVA_HOME}" '''
+			  
+				sh '''ls -ltr'''
+				dir('TRUGLOBAL'){
+				dir('TRUGlobalAutomation'){
+				 
+					sh '''mvn -v'''
+					sh '''pwd'''
+					sh '''ls -ltr'''
+					sh '''sleep 250'''
+					sh '''mvn clean install'''
+				   
+				}
+				   }
+					 }	
+					 }
+				 }
+													 
+													 
+			}  
+			 
+			stage('Performance-Testing'){
+				steps{
+					catchError(buildResult: 'SUCCESS') {
+				   
+				   sh '''echo "perfromance-testing-started....." '''
+				   
+				   sh '''echo "${JMETER_HOME}" '''
+				   
+				   sh '''pwd'''
+					sh '''ls -ltr'''
+				   
+			
+				  
+				 sh '''${JMETER_HOME}/bin/jmeter -n -t ${JMETER_HOME}/bin/Shopizer_DevOps.jmx  -l shopizer-report.jtl'''
+				 perfReport filterRegex: '', showTrendGraphs: true , sourceDataFiles: '**/*.jtl'
+					}
+				}
+			}
+			
+			stage('overall-code-coverage'){
+				steps{
+				timestamps {
+			   
+		
+				dir('Backend-code-base/sm-shop/target/'){
+				  sh '''java -jar org.jacoco.cli-0.8.8-nodeps.jar report jacoco.exec --classfiles classes/com/ --html ./jacoco-report'''
+			   
+				  jacoco()
+			 
+			   }
+				 }
+				}
+			}
+			
+		  
+	}
+	 post {
+			always {
+			
+			   
+					echo "Archiving.."
+					archiveArtifacts(artifacts: '**/*.txt', followSymlinks: false)
+					archiveArtifacts(artifacts: '**/TRUGlobalAutomation/target/*.jar', followSymlinks: false)
+					archiveArtifacts(artifacts: '**/TRUGlobalAutomation/target/surefire-reports/*.html',followSymlinks: false) 
+					//archiveArtifacts(artifacts: '**/Code-Coverage/shopizer/sm-shopizer-demo-reports/target/site/jacoco-aggregate/*.*' ,followSymlinks: false) 
+				//	dir('Code-Coverage/shopizer/sm-shopizer-demo-reports/target/site'){
+				   // archiveArtifacts artifacts: '**', followSymlinks: false
+				  // }
+				   
+			}
+		}
+	  
+	}
+
+
+
+
+		

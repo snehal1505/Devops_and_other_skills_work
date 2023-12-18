@@ -1,0 +1,133 @@
+pipeline {
+    agent any
+     environment {
+         SFDX_HOME = "/home/TGAutomation/sfdx"
+    	SERVERKEY = "/home/TGAutomation/openssl_for_sf/from_VMJenkins/server.key"
+    	ORGURL = 'https://login.salesforce.com'
+       JAVA_HOME = "/usr/lib/jvm/java-11-openjdk-amd64"
+     }
+
+   
+      stages {
+        stage('SFDX version') {
+            steps {
+                sh '''echo "Hello World" ''' 
+                sh '''echo "${SERVERKEY}" '''
+                sh '''echo "$PATH" '''
+                sh '''echo "${SFDX_HOME}" '''
+                sh '''cd ${SFDX_HOME}/bin/ 
+                      sfdx --version'''
+                
+            }
+        }
+         stage('Pull from Gitlab') {
+            steps {
+                
+              sh '''if [ -e "sfdx_connect" ] 
+                     then 
+                            rm -rf sfdx_connect
+                        else 
+                           echo "skip"
+                      fi''' 
+               
+                sh ''' git clone -b feature1 https://<username>:<token>@gitlab.com/pankajja/sfdx_connect.git '''
+                
+                sh '''pwd'''
+                sh '''echo "$PATH" '''
+                sh '''ls -ltr'''
+            }
+        }
+        stage('Sfdx Connect_SrcOrg Authentication') {
+            steps {
+                
+                sh ''' "${SFDX_HOME}/bin/sfdx" force:auth:jwt:grant --clientid 3MVG9pRzvMkjMb6kItveBJrs7OOhsG3awq5L7oFz6Ja3F1oh7hLLZrBGIP.eT3Fa8yzdnGDGuFf4i10Y5G1pD --jwtkeyfile ${SERVERKEY} --username <username>@yahoo.com --instanceurl ${ORGURL} '''
+            }
+        }
+        stage('sfdx Connect_list_metadata') {
+            steps {
+                sh ''' "${SFDX_HOME}/bin/sfdx" force:mdapi:listmetadata -m CustomObject -u pankaj.awaghad@yahoo.com -f list_metadat.txt '''
+            }
+        }
+        stage('sfdx Connect_retrieve_metadata') {
+            steps {
+                sh ''' ls -ltr '''
+                sh "pwd"
+                dir("sfdx_connect") {
+                sh "pwd"
+                sh '''set SFDX_DISABLE_DNS_CHECK=true'''
+                sh ''' "${SFDX_HOME}/bin/sfdx" force:source:retrieve -x `pwd`/manifest/package.xml -u <username>@yahoo.com'''
+                }
+            }
+        }
+        
+stage('Sfdx Connect_DestOrg Authentication') {
+            steps {
+                sh ''' "${SFDX_HOME}/bin/sfdx" force:auth:jwt:grant --clientid 3MVG9pRzvMkjMb6lmB4YJ7r7ELiAyf4Tz6mb7S8g_S65Z6RelnSGo.phaAPsFXsIoeiF5KwK4BXngNeU9IEcB --jwtkeyfile /home/TGAutomation/openssl_for_sf/from_VMJenkins/server.key --username <username>.com --instanceurl https://login.salesforce.com'''
+                }
+
+     }
+     stage('sfdx Connect_deploy_metadata') {
+            steps {
+                dir("sfdx_connect") {
+                sh '''pwd'''
+                
+               sh ''' "${SFDX_HOME}/bin/sfdx" force:source:deploy -x `pwd`/manifest/package.xml -u <username>.com -w 5 '''
+                }
+            }
+        }
+        stage('SFDC_Automation_set_up') {
+            steps {
+                dir("SFDX_Pipeline_sfdc_automation"){
+                sh '''pwd'''
+                sh '''ls -ltr'''
+                }
+                
+                dir("workspace"){
+                sh '''pwd'''
+                sh '''ls -ltr'''
+                }
+                sh '''pwd'''
+                sh '''echo ${JAVA_HOME} '''
+                sh '''if [ -e "TRUGlobalAutomation" ] 
+                      then
+                             rm -rf TRUGlobalAutomation
+                      else 
+                     echo "skip" 
+                     fi'''
+               
+                sh ''' git clone -b Azure_Pipeline https://<username>:<github_token>@github.com/TRU-Global/TRUGlobalAutomation.git '''
+                sh '''ls -ltr'''
+		
+            }
+        }
+        
+        stage('SFDC_Automation_execution'){
+            steps { 
+            sh '''pwd'''
+            sh '''echo "${AVA_HOME}" '''
+            sh '''cd `pwd`/TRUGlobalAutomation/TRUGlobalAutomation'''
+            sh '''ls -ltr'''
+            sh '''mvn -f TRUGlobalAutomation/TRUGlobalAutomation/pom.xml clean install'''
+			}
+        }
+      }
+         post {
+        always {
+            /*cleanWs(cleanWhenNotBuilt: false,
+                    deleteDirs: false,
+                    disableDeferredWipeout: true,
+                    notFailBuild: false,
+                    patterns: [[pattern: 'log', type: 'INCLUDE']])*/
+                echo "Archiving.."
+                archiveArtifacts(artifacts: '**/*.txt', followSymlinks: false)
+				archiveArtifacts(artifacts: '**/TRUGlobalAutomation/TRUGlobalAutomation/target/*.jar', followSymlinks: false)
+				archiveArtifacts(artifacts: '**/TRUGlobalAutomation/TRUGlobalAutomation/target/surefire-reports/*.html',followSymlinks: false) 
+                //archiveArtifacts(artifacts: '**/retrieveUnpackaged/objects/*.object', followSymlinks: false)
+        }
+    }
+        
+    
+        
+     
+
+}
