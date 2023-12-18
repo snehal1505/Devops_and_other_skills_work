@@ -1,0 +1,154 @@
+pipeline {
+    agent any 
+   environment {
+        JMETER_HOME = "/home/TGAutomation/jmeter/apache-jmeter-5.5"
+         //SFDX_HOME = "/home/TGAutomation/sfdx"
+    //	SERVERKEY = "/home/TGAutomation/openssl_for_sf/from_VMJenkins/server.key"
+    //	ORGURL = 'https://login.salesforce.com'
+       JAVA_HOME = "/usr/lib/jvm/java-11-openjdk-amd64"
+       Branch = "develop"
+      // MAVEN_HOME = "/opt/apache-maven-3.6.3"
+     }
+        
+    stages {
+        stage('checkout-SCM'){
+            steps{
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-credential', url: 'https://github.com/TRU-Global/shopizer-shop-reactjs.git']]])
+            }
+        }
+       stage('SonarQube analysis') {
+            //  def scannerHome = tool 'SonarScanner 4.0';
+       steps{
+            //nodejs(nodeJSInstallationName:'Node-16'){
+           // sh '''npm install'''
+           echo "code-analysis started"
+           
+             withSonarQubeEnv('sonar') {
+      
+              sh '''npm i sonar-scanner'''
+              sh '''npm run sonar'''
+               }
+         
+      }
+    }
+       
+        stage('Build'){
+            steps{
+                
+               // sh '''Fuser -k 3000/tcp || true'''
+                
+                sh '''echo "building code....."'''
+                 sh '''echo "${JAVA_HOME}" '''
+                 
+                 sh '''pwd'''
+                 sh '''fuser -k 3000/tcp || true'''
+                 
+                 sh '''npm i'''
+           }
+      }
+      
+      stage('Deploy'){
+          steps{
+              sh '''echo "Deploying....." '''
+              sh '''pwd'''
+              
+             build job: 'Deploy', parameters: [string(name: 'param1', value: "value1")],wait:false
+             
+          }
+       }
+    
+      
+        stage('API-Automation'){
+           steps{
+               
+               sh '''echo "test-API...."'''
+               
+               sh '''pwd'''
+               sh '''ls -ltr'''
+        
+               sh '''newman run /home/TGAutomation/'Shopizer  Orchestration Process.postman_collection' '''
+         }
+      }
+      
+       
+      
+       stage('Shopizer_Automation_test_set_up') {
+            steps {
+            
+                
+                sh '''ls -ltr'''
+            
+                sh '''echo ${JAVA_HOME} '''
+                sh '''if [ -e "TRUGlobalAutomation" ] 
+                      then
+                             rm -rf TRUGlobalAutomation
+                      else 
+                     echo "skip" 
+                     fi'''
+               
+    checkout([$class: 'GitSCM', branches: [[name: '*/Jenkins']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-credential', url: 'https://github.com/TRU-Global/Shopizer.git']]])
+                sh '''ls -ltr'''
+		
+            }
+        }
+        
+        stage('Shopizer_Automation_test_execution'){
+            steps { 
+            sh '''pwd'''
+            sh '''echo "${JAVA_HOME}" '''
+          //  sh '''cd `pwd`/TRUGlobalAutomation'''
+          //  sh '''pwd'''
+            sh '''ls -ltr'''
+            dir('TRUGlobalAutomation'){
+             // sh '''echo "${MAVEN_HOME}"'''
+             sh '''mvn -v'''
+                sh '''pwd'''
+                sh '''ls -ltr'''
+            sh '''mvn clean install'''
+            }
+          
+			}
+        }
+        
+        
+         
+        stage('Performance-Testing'){
+            steps{
+               // sh '''/home/TGAutomation/jmeter/apache-jmeter-5.5/bin ./jmeter.sh -n -t examples/CSVSample.jmx'''
+               sh '''echo "perfromance-testing-started....." '''
+               
+               sh '''echo "${JMETER_HOME}" '''
+               
+               sh '''pwd'''
+                sh '''ls -ltr'''
+               
+              // sh '''${JMETER_HOME}/bin/jmeter.sh -n -t ${JMETER_HOME}/bin/examples/CSVSample.jmx'''
+              // sh '''${JMETER_HOME}/bin/jmeter.sh -n -t ${JMETER_HOME}/bin/Shopizer_DevOps.jmx -l ${JMETER_HOME}/report/shopizer.report.jtl'''
+              
+              
+             sh '''${JMETER_HOME}/bin/jmeter -n -t ${JMETER_HOME}/bin/Shopizer_DevOps.jmx  -l shopizer-report.jtl'''
+            }
+        }
+        
+        stage('publish Report'){
+            steps{
+                //perfReport filterRegex: '', showTrendGraphs: true, sourceDataFiles: '${JMETER_HOME}/reports/shopizer-report.jtl'
+             // perfReport filterRegex: '', showTrendGraphs: true, sourceDataFiles:'
+             perfReport filterRegex: '', showTrendGraphs: true , sourceDataFiles: '**/*.jtl'
+            }
+        }
+        
+      
+}
+ post {
+        always {
+           
+                echo "Archiving.."
+                archiveArtifacts(artifacts: '**/*.txt', followSymlinks: false)
+				archiveArtifacts(artifacts: '**/TRUGlobalAutomation/target/*.jar', followSymlinks: false)
+				archiveArtifacts(artifacts: '**/TRUGlobalAutomation/target/surefire-reports/*.html',followSymlinks: false) 
+               
+        }
+    }
+}
+
