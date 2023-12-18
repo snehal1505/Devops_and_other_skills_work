@@ -1,0 +1,355 @@
+pipeline {
+    agent any 
+ 
+   environment {
+         // MAVEN_HOME = "/opt/apache-maven-3.6.3"
+         //SFDX_HOME = "/home/TGAutomation/sfdx"
+    //	SERVERKEY = "/home/TGAutomation/openssl_for_sf/from_VMJenkins/server.key"
+    //	ORGURL = 'https://login.salesforce.com'
+        JAVA_HOME = "/usr/lib/jvm/java-11-openjdk-amd64"
+        //Branch = "develop"
+	    WORKSPACE_HOME = "/var/lib/jenkins/workspace"
+	    //JMETER_HOME = "/home/TGAutomation/jmeter/apache-jmeter-5.5"
+	   GEN_ROCKET_HOME = "/home/azureuser/Genrocket/genrocket"
+       PATH= "/usr/bin/apache-maven-3.6.3/bin:/opt/scala/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/azureuser/Genrocket/genrocket/bin:/home/azureuser/sfdx/bin"
+	
+      
+     }
+        
+    stages {
+        stage('Initialization Of VM Creation'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                sh '''whoami'''
+                dir('/home/azureuser/platform-engineering/Terraform_VM'){
+                    sh '''pwd'''
+                    sh '''ls -ltr'''
+                    sh '''terraform init'''
+                    sh '''sleep 4'''
+                    sh '''terraform validate'''
+                }
+            }
+        }
+        
+        
+        stage('Build VM'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                dir('/home/azureuser/platform-engineering/Terraform_VM'){
+                    sh '''pwd'''
+                    sh '''ls -ltr'''
+                    sh '''terraform apply -auto-approve'''
+                    sh '''rm -rf ip.txt'''
+                    sh '''terraform output > ip.txt'''
+                    sh '''chmod +x ip.txt'''
+                }
+            }
+        }
+        
+        
+        stage('Initialization Of K8s Cluster'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                sh '''whoami'''
+                dir('/home/azureuser/platform-engineering/Terraform_AKS'){
+                    sh '''pwd'''
+                    sh '''ls -ltr'''
+                    sh '''terraform init'''
+                    sh '''sleep 4'''
+                    sh '''terraform validate'''
+                }
+            }
+        }
+        
+        stage('Build K8s Cluster'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                dir('/home/azureuser/platform-engineering/Terraform_AKS'){
+                    sh '''pwd'''
+                    sh '''ls -ltr'''
+                    sh '''terraform apply -auto-approve'''
+                    sh '''rm -rf ip.txt'''
+                    sh '''terraform output > cluster.txt'''
+                    sh '''chmod +x cluster.txt'''
+                }
+            }
+        }
+        
+        stage('Validation Of Public IP'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                dir('/home/azureuser/platform-engineering/Terraform_RG'){
+                    sh '''pwd'''
+                    sh '''ls -ltr'''
+                    sh '''terraform init'''
+                    sh '''sleep 4'''
+                    sh '''terraform validate'''
+                }
+            }
+        }
+        
+        stage('Build Public IP'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                dir('/home/azureuser/platform-engineering/Terraform_RG'){
+                    sh '''pwd'''
+                    sh '''ls -ltr'''
+                    sh '''terraform apply -auto-approve'''
+                    sh '''rm -rf address.txt'''
+                    sh '''rm -rf newaddress.txt'''
+                    sh '''terraform output > address.txt'''
+                    sh '''chmod +x address.txt'''
+                    sh '''grep -oE '[0-9]+.[0-9]+.[0-9]+.[0-9]+' address.txt | cut -d '"' -f 2 > newaddress.txt'''
+                    sh '''chmod +x newaddress.txt'''
+                }
+            }
+        }
+        
+        stage('checkout-SCM'){
+		steps {
+                 sh '''ls -ltr'''
+				 sh '''echo ${JAVA_HOME} '''
+				 sh '''if [ -e "TRUGLOBAL" ] 
+                                        then
+                                          rm -rf TRUGLOBAL
+                                      else 
+                                          echo "skip" 
+                        fi '''
+			     sh '''mkdir TRUGLOBAL'''
+					 dir('TRUGLOBAL'){
+					 
+					             sh '''if [ -e "TRUGlobalAutomation" ] 
+                                        then
+                                          rm -rf TRUGlobalAutomation
+                                      else 
+                                          echo "skip" 
+                                        fi'''
+				              checkout([$class: 'GitSCM', branches: [[name: '*/Jenkins']], 
+							  extensions: [], userRemoteConfigs: [[credentialsId: 'github-credential', 
+							  url: 'https://github.com/TRU-Global/Shopizer.git']]])
+							 
+							sh '''echo "Inside executable code"'''
+							sh '''pwd '''
+							sh '''ls -ltr'''
+							dir('TRUGlobalAutomation'){
+							        sh '''pwd'''
+							        sh '''ls -ltr'''
+									}
+					 }
+					 
+		  
+		       sh '''if [ -e "performance" ]
+		         then
+		             rm -rf  performance 
+		         else 
+		            echo "skip"
+		          fi
+		            '''
+		            
+		     sh '''mkdir performance'''
+		     dir('performance'){
+		     checkout scmGit(branches: [[name: '*/Gatling_Main']],
+             extensions: [], userRemoteConfigs: [[credentialsId: 'Chandra_Git_Access',
+             url: 'https://github.com/TRU-Global/Gatling_LoadTesting']])
+              }
+               
+             sh '''if [ -e "YAMLFILE" ] 
+                                       then
+                                          rm -rf YAMLFILE
+                                       else 
+                                          echo "skip" 
+                        fi '''
+                        
+             sh '''mkdir YAMLFILE'''
+             
+             dir('YAMLFILE'){
+                 checkout scmGit(branches: [[name: '*/k8yamltemplate']],
+                 extensions: [], userRemoteConfigs: [[credentialsId: 'yamlfileupdate',
+                 url: 'https://github.com/<username>/Selenoidrepo']])
+                }
+                 sh '''if [ -e "shopizer_frontend" ] 
+                                        then
+                                          rm -rf shopizer_frontend
+                                      else 
+                                          echo "skip" 
+                        fi '''
+             sh '''mkdir shopizer_frontend'''
+                dir('shopizer_frontend'){
+                    checkout scmGit(branches: [[name: '*/frontend']], 
+                    extensions: [], 
+                    userRemoteConfigs: [[credentialsId: 'github-access-container', 
+                    url: 'https://github.com/<username>/containerize-shopizer-application.git']])
+                }
+                
+                sh '''if [ -e "Code-Coverage" ] 
+                                        then
+                                          rm -rf Code-Coverage
+                                       else 
+                                           echo "skip" 
+                        fi '''		  
+				     sh '''mkdir Code-Coverage'''
+					 sh ''' ls -ltr'''
+					 dir('Code-Coverage'){
+					              checkout([$class: 'GitSCM', branches: [[name: 'pank_jacoco_aggr']], 
+                                  extensions: [], userRemoteConfigs: [[credentialsId: 'snehal-github-access', 
+                                  url: 'https://github.com/<username>/shopizer.git']]])
+								     
+									 sh '''pwd'''
+									 sh '''ls -ltr'''
+									 }
+									 
+								 
+                }    
+              }
+             
+        
+        
+        
+        stage('sonarqube-analysis'){
+            steps{
+                dir('shopizer_frontend'){
+                    
+                     echo "code-analysis started"
+                     sh '''ls -ltr'''
+           
+             withSonarQubeEnv('SonarQube') {
+      
+               sh '''npm i sonar-scanner'''
+               sh '''npm run sonar'''
+                      }
+                   }
+            }
+        }
+        
+        
+        
+     stage('Code-Coverage-setup'){
+         
+	     steps{
+		 dir('Code-Coverage'){
+		 sh '''ls -ltr'''
+		 sh '''pwd'''
+		 sh '''mvn clean verify'''
+		 }
+	     }
+	}
+		 
+	
+   stage('code-Coverage'){
+	   steps {
+	     dir('Code-Coverage'){
+	        jacoco()
+	        }
+	    }
+      }
+	
+        
+        stage('Cluster Deployment'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                dir('/home/azureuser/platform-engineering/Terraform_RG'){
+                    sh '''pwd'''
+                    sh '''./replace_variable.sh'''
+                    sh '''sleep 5'''
+                }
+                dir('/home/azureuser/platform-engineering/'){
+                    sh '''pwd'''
+                    sh '''sleep 90'''
+                    sh '''ls -ltr'''
+                    sh '''./clusteryaml.sh'''
+                    sh '''sleep 120'''
+                }
+            }
+        }
+        
+        stage('Test Data Generation'){
+            steps{
+               sh '''ls -ltr'''
+               sh '''pwd'''
+               sh '''genrocket -r /var/lib/jenkins/input/ShopizerCustomerScenario.grs'''
+              build job: 'Chaos_generation', parameters: [string(name: 'param1', value: "value1")],wait:false
+        }
+        }
+        
+					 
+		stage('Gatling Build'){
+		    steps {
+		        dir('performance'){
+		            timestamps {
+		            sh '''cp -p /home/azureuser/platform-engineering/Terraform_RG/rungatling.sh .'''
+		            sh '''cp /home/azureuser/platform-engineering/Terraform_RG/address.txt .'''
+		            sh '''cp /home/azureuser/platform-engineering/Terraform_RG/newaddress.txt .'''
+		            sh '''./rungatling.sh'''
+		            }
+		            }
+		        }
+		    }
+
+					 
+        stage('Updating Execution Properties'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                dir('/home/azureuser/platform-engineering/Terraform_VM'){
+                    sh '''ls -ltr'''
+                    sh '''chmod 777 /var/lib/jenkins/workspace/Platform-Engineering/TRUGLOBAL/TRUGlobalAutomation/src/main/resources/ '''
+                    sh '''./updateProperty.sh'''
+                }                
+            }
+        }
+        
+        stage('Test Automation Execution'){
+            steps{
+               sh '''ls -ltr''' 
+               dir('TRUGLOBAL/TRUGlobalAutomation'){
+               sh '''pwd'''
+               sh ''' mvn test'''
+            }
+        }
+        }
+        
+	   
+        stage('Destroy K8s Cluster'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                dir('/home/azureuser/platform-engineering/Terraform_AKS'){
+                    sh '''pwd'''
+                    sh '''ls -ltr'''
+                    sh '''terraform destroy -auto-approve'''
+                }
+            }
+        }
+        
+         stage('Destroy VM'){
+            steps{
+                sh '''ls -ltr'''
+                sh '''pwd'''
+                dir('/home/azureuser/platform-engineering/Terraform_VM'){
+                    sh '''pwd'''
+                    sh '''ls -ltr'''
+                    sh '''sleep 120'''
+                   // sh '''terraform destroy -auto-approve'''
+                }
+            }
+        }
+        
+}
+    
+    post {
+        
+        always {
+            gatlingArchive()
+        }
+    }
+}
+//--------------------------------------------------------------------------------------------
+
+
