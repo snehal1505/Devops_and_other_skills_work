@@ -1,0 +1,27 @@
+pipeline {
+    agent any
+    stages {
+        stage('clone repo') {
+            steps {
+                 git branch: 'project', credentialsId: 'Gitlab_access', url: 'https://gitlab.com/sneha40/new-maven-project.git'
+            }
+        }
+        stage('build') {
+            steps {
+               bat '''mvn clean install'''
+
+            }
+        }
+        stage('test') {
+            steps {
+                bat '''mvn test'''
+            }
+        }
+        stage('package') {
+            steps {
+                bat '''mvn package'''
+                archiveArtifacts artifacts: '**/target/*.jar'
+            }
+        }
+    }
+}
