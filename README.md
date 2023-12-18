@@ -1,4 +1,4 @@
-# Devops_-_Other_Skill_Set
+# Devops_Skill_Set
 Welcome to my DevOps Showcase repository! This repository is curated specifically to highlight my expertise and projects in the DevOps domain.
 
 
